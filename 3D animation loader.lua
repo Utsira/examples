@@ -478,7 +478,7 @@ function Rig:BuildMesh() --concatenate files into mesh
         local frame=self.obj[i]
         for j=1,#frame.v do
            local v = frame.v[j]
-            pos[i-1][j]=vec4(v.x,v.y,v.z,v.w) --nb must make an independent copy of the vector
+            pos[i-1][j]=vec3(v.x,v.y,v.z) --nb must make an independent copy of the vector
             local n = frame.n[j]
             norm[i-1][j]=vec3(n.x,n.y,n.z)
         end
