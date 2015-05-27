@@ -1110,7 +1110,7 @@ FrameBlendNoTexToon = { --models with no texture image
     varying float vIntensity;
 
     const float posterize = 5.; //layers of posterization
-    const float posterize2 = 1./(posterize-1.);
+    const float posterize2 = 1./posterize;
 
     void main()
     {
@@ -1121,7 +1121,7 @@ FrameBlendNoTexToon = { --models with no texture image
         }
         else
         {
-            gl_FragColor=vAmbient + vColor * float(int(vIntensity * posterize))*posterize2; //posterize colours
+            gl_FragColor=vAmbient + vColor * ceil(vIntensity * posterize)*posterize2; //posterize colours
             // gl_FragColor=vAmbient + vColor * vIntensity; //non-posterized colours
         }
     }
