@@ -1,3 +1,4 @@
+
 --# Main
 --3D Animation viewer
 displayMode(OVERLAY)
@@ -196,7 +197,7 @@ function OBJ:ProcessData()
     end
     end
     
-     if #n==0 then n=CalculateAverageNormals(v) end
+     if #n==0 then n=CalculateAverageNormals(v) end --Average
     self.v = v
     self.t = t
     self.c = c 
@@ -500,10 +501,12 @@ end
 function Rig:draw(e)
     self.mesh.shader.modelMatrix=modelMatrix() --part of lighting
     self.mesh.shader.eye=e
-  
+
+    --[[ --for 2-pass version of shader
     self.mesh.shader.outline=true
     self.mesh:draw()
     self.mesh.shader.outline=false
+      ]]
 
     self.mesh:draw()
 end
@@ -597,7 +600,7 @@ function Rig:BuildMesh() --concatenate files into mesh
     m.shader.light=vec4(l.x,l.y,l.z,0)
     m.shader.lightColor = color(234, 232, 223, 255)
     
-    m.shader.ambient=0.3
+    m.shader.ambient=0.2
     if mtl.map then
         local tex=OBJ.imgPrefix..mtl.map
         print("texture:"..tex)
@@ -704,7 +707,7 @@ TilerShader={vs=[[
         gl_FragColor = col;
     }
     ]]}
-
+    
 --# Shader
 --Shaders
 FrameBlendNoTex = { --models with no texture image
@@ -1020,9 +1023,8 @@ FrameBlendNoTex = { --models with no texture image
     ]]
 }
 
-
 --# ToonShader
-FrameBlendNoTexToon = { --models with no texture image
+FrameBlendNoTexToon = { --2-pass Toon shader inspired by Unity
     splineVert= --vertex shader with catmull rom spline interpolation of key frames
     [[ 
     uniform mat4 modelViewProjection;
@@ -1123,6 +1125,133 @@ FrameBlendNoTexToon = { --models with no texture image
         {
             gl_FragColor=vAmbient + vColor * ceil(vIntensity * posterize)*unposterize; //posterize colours
             // gl_FragColor=vAmbient + vColor * vIntensity; //non-posterized colours
+        }
+    }
+    
+    ]]
+    }
+
+--# ToonShader3
+FrameBlendNoTexToon = { --Single-pass toon shader inspired by GLSL Programming e-Book
+    splineVert= --vertex shader with catmull rom spline interpolation of key frames
+    [[ 
+    uniform mat4 modelViewProjection;
+    uniform mat4 modelMatrix;
+    uniform float ambient; // --strength of ambient light 0-1
+    uniform vec4 lightColor;
+    const vec4 front = vec4(0.,0.,1.,0.);
+
+    uniform int frames[4]; //contains indexes to 4 frames needed for CatmullRom
+    uniform float frameBlend; // how much to blend by
+    float frameBlend2 = frameBlend * frameBlend; //pre calculated squared and cubed for Catmull Rom
+    float frameBlend3 = frameBlend * frameBlend2;
+    
+    attribute vec4 color;
+
+    attribute vec3 position;
+    attribute vec3 position1;
+    attribute vec3 position2; //not possible for attributes to be arrays in Gl Es2.0 
+    attribute vec3 position3;
+    attribute vec3 position4;
+        
+    attribute vec3 normal;
+    attribute vec3 normal1;
+    attribute vec3 normal2;
+    attribute vec3 normal3;
+    attribute vec3 normal4;
+
+    vec3 getPos(int no) //home-made hash, ho hum.  
+    {
+        if (no==0) return position;
+        if (no==1) return position1;
+        if (no==2) return position2;
+        if (no==3) return position3;
+        if (no==4) return position4;
+    }
+    
+    vec3 getNorm(int no)
+    {
+        if (no==0) return normal;
+        if (no==1) return normal1;
+        if (no==2) return normal2;
+        if (no==3) return normal3;
+        if (no==4) return normal4;
+    }
+      
+    varying lowp vec4 vAmbient;
+    varying lowp vec4 vColor;
+    varying lowp vec4 vNormal;
+    varying lowp vec4 vPosition;
+    
+    vec3 CatmullRom(float u, float u2, float u3, vec3 x0, vec3 x1, vec3 x2, vec3 x3 ) //returns value between x1 and x2
+    {
+    return ((2. * x1) + 
+           (-x0 + x2) * u + 
+           (2.*x0 - 5.*x1 + 4.*x2 - x3) * u2 + 
+           (-x0 + 3.*x1 - 3.*x2 + x3) * u3) * 0.5;
+    }
+    
+    void main()
+    {       
+ 
+        vec3 framePos = CatmullRom(frameBlend, frameBlend2, frameBlend3, getPos(frames[0]), getPos(frames[1]), getPos(frames[2]), getPos(frames[3]) );
+       vec3 frameNorm = CatmullRom(frameBlend, frameBlend2, frameBlend3, getNorm(frames[0]), getNorm(frames[1]), getNorm(frames[2]), getNorm(frames[3]) );
+
+        vNormal = normalize(modelMatrix * vec4( frameNorm, 0.0 ));
+        vPosition = normalize(modelMatrix * vec4(framePos, 1.));
+
+        vAmbient = color * ambient;
+        vAmbient.a = 1.; 
+        vColor = color; 
+        
+        gl_Position = modelViewProjection * vec4(framePos, 1.);
+    }
+    
+    ]],
+    --frag shader with hard outline effect, option for posterization, specular highlights
+    frag = [[ 
+    precision highp float;
+    uniform vec4 light; //--directional light direction (x,y,z,0)
+    uniform vec4 eye; // -- position of camera (x,y,z,1)
+
+    varying lowp vec4 vColor;
+    varying lowp vec4 vAmbient;  
+    varying lowp vec4 vNormal;
+    varying lowp vec4 vPosition;
+
+    //posterization
+    const float posterize = 3.; //layers of posterization
+    const float unposterize = 1./posterize;
+
+    //specular highlights
+    const float specularPower = 48.; // higher number = smaller highlight
+    const float shine = 1.; 
+
+    //outline thickness
+    const float litThickness = 0.1; //line thickness for well lit areas
+    const float unlitThickness = 0.4; //line thickness for unlit areas
+
+    void main()
+    {   
+
+        vec4 viewDirection = normalize(eye - vPosition);
+        //diffuse
+        float intensity = max( 0.0, dot( vNormal, light ));
+
+        if (dot(viewDirection, vNormal) < smoothstep(unlitThickness, litThickness, intensity)) 
+        {
+            gl_FragColor = vAmbient; //vec4(0.,0.,0.,1.); //dark or black outline
+        }
+        else
+        {
+          
+            //specular blinn-phong. Uncomment and add "+ specular" to end of gl_FragColor line below
+            vec4 halfAngle = normalize( viewDirection + light );
+            float spec = pow( max( 0.0, dot( vNormal, halfAngle)), specularPower );
+            vec4 specular = vec4(1.,1.,1.,1.)  * spec * shine; //
+
+            gl_FragColor=vAmbient + vColor * ceil(intensity * posterize) *unposterize + specular ; //posterize colours.
+            //gl_FragColor=vAmbient + vColor * intensity + specular; //non-posterized colours. 
         }
     }
     
