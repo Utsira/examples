@@ -1248,7 +1248,7 @@ FrameBlendNoTexToon = { --Single-pass toon shader inspired by GLSL Programming e
             //specular blinn-phong. Uncomment and add "+ specular" to end of gl_FragColor line below
             vec4 halfAngle = normalize( viewDirection + light );
             float spec = pow( max( 0.0, dot( vNormal, halfAngle)), specularPower );
-            vec4 specular = vec4(1.,1.,1.,1.)  * spec * shine; //
+            vec4 specular = spec * shine * vColor; //
 
             gl_FragColor=vAmbient + vColor * ceil(intensity * posterize) *unposterize + specular ; //posterize colours.
             //gl_FragColor=vAmbient + vColor * intensity + specular; //non-posterized colours. 
